@@ -1,0 +1,47 @@
+# Model 1 (released weights) — original Hybrid CNN + Transformer + BN head.
+# This config matches model_weights/model_1.pth exactly. It was trained with the
+# legacy 34-token char tokenizer and nhead=4 — do not change those or the
+# released weights will not behave correctly.
+# For NEW training prefer configs/model3_cnn_film.yaml instead.
+model:
+  name: cnn_hybrid
+  embed_dim: 128
+  cnn_dim: 256
+  num_layers: 4
+  nhead: 4            # must match training
+  dropout: 0.1
+
+tokenizer:
+  kind: char_legacy   # original 34-token tokenizer (unknown char -> PAD, as trained)
+  max_length: 256
+
+protein:
+  esm_model: facebook/esm2_t12_35M_UR50D
+  pooling: mean
+
+data:
+  train_path: /kaggle/input/your-dataset/final_merged_train_data.parquet
+  test_path: /kaggle/input/competitions/leash-BELKA/test.parquet
+  n_splits: 5
+  fold: 0
+  seed: 42
+
+train:
+  batch_size: 3072
+  epochs: 8
+  lr: 2.0e-4
+  max_lr: 2.0e-4
+  weight_decay: 1.0e-2
+  ema_decay: 0.999
+  time_limit_hours: 8.0
+
+loss:
+  alpha: 0.25
+  gamma: 2.0
+  label_smoothing: 0.01
+
+output:
+  checkpoint: checkpoints/cnn_hybrid_fold0.pth   # fresh-training target
+  submission: submissions/model_1.csv
+
+pretrained: model_weights/model_1.pth            # released weights used by predict.py

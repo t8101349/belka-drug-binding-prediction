@@ -1,0 +1,46 @@
+# Model 1 — Multi-Scale CNN + FiLM Peri-LN (from scratch)
+model:
+  name: cnn_film
+  embed_dim: 128
+  d_model: 256
+  num_layers: 4
+  nhead: 8
+  dropout: 0.1
+
+tokenizer:
+  kind: char          # SmartSmilesTokenizer
+  max_length: 160     # measured max token length = 120, so 160 never truncates
+
+protein:
+  esm_model: facebook/esm2_t12_35M_UR50D
+  pooling: mean
+
+data:
+  train_path: /kaggle/input/your-dataset/final_merged_train_data.parquet
+  test_path: /kaggle/input/competitions/leash-BELKA/test.parquet
+  n_splits: 5
+  fold: 0
+  seed: 42
+
+train:
+  batch_size: 4096
+  epochs: 15
+  lr: 5.0e-4
+  max_lr: 5.0e-4
+  weight_decay: 1.0e-2
+  ema_decay: 0.999
+  time_limit_hours: 8.0
+
+loss:
+  alpha: 0.25
+  gamma: 2.0
+  label_smoothing: 0.01
+
+output:
+  checkpoint: checkpoints/model_3_fold0.pth
+  submission: submissions/model_3.csv
+
+# Reserved slot for the trained CNN+GEGLU weights. After training, copy the
+# checkpoint here (cp checkpoints/model_3_fold0.pth model_weights/model_3.pth)
+# and predict.py will pick it up automatically.
+pretrained: model_weights/model_3.pth

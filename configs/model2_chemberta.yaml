@@ -1,0 +1,45 @@
+# Model 2 — Frozen ChemBERTa + protein-query Cross-Attention fusion
+model:
+  name: chemberta_crossattn
+  chem_model_name: DeepChem/ChemBERTa-77M-MLM
+  d_model: 384
+  num_queries: 8
+  num_fusion_layers: 4
+  nhead: 6
+  dropout: 0.1
+
+tokenizer:
+  kind: hf            # HuggingFace ChemBERTa tokenizer
+  hf_name: DeepChem/ChemBERTa-77M-MLM
+  max_length: 160
+
+protein:
+  esm_model: facebook/esm2_t12_35M_UR50D
+  pooling: mean
+
+data:
+  train_path: /kaggle/input/your-dataset/final_merged_train_data.parquet
+  test_path: /kaggle/input/competitions/leash-BELKA/test.parquet
+  n_splits: 5
+  fold: 0
+  seed: 42
+
+train:
+  batch_size: 3072
+  epochs: 12
+  lr: 3.0e-4
+  max_lr: 3.0e-4
+  weight_decay: 1.0e-2
+  ema_decay: 0.999
+  time_limit_hours: 8.0
+
+loss:
+  alpha: 0.25
+  gamma: 2.0
+  label_smoothing: 0.01
+
+output:
+  checkpoint: checkpoints/chemberta_fold0.pth
+  submission: submissions/model_2.csv
+
+pretrained: model_weights/model_2.pth            # released weights used by predict.py

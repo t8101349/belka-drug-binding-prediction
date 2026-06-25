@@ -1,0 +1,72 @@
+"""Protein sequences and ESM-2 embedding pre-computation.
+
+BELKA only has three protein targets, so the embeddings are computed once
+up-front and cached in a dict {name: vector}. The choice of protein encoder
+barely matters here (3 fixed proteins, mean-pooled), so a small ESM-2 is fine.
+"""
+from __future__ import annotations
+
+import numpy as np
+import torch
+
+# Canonical sequences used by the Leash-BELKA competition targets.
+PROTEIN_SEQUENCES: dict[str, str] = {
+    "BRD4": (
+        "MSAESGPGTRLRNLPVMGDGLETSQMSTTQAQAQPQPANAASTNPPPPETSNPNKPKRQTNQLQYLLRVVLKTLWKHQFAWPFQQPVDAVKLNLPDYYKII"
+        "KTPMDMGTIKKRLENNYYWNAQECIQDFNTMFTNCYIYNKPGDDIVLMAEALEKLFLQKINELPTEETEIMIVQAKGRGRGRKETGTAKPGVSTVPNTTQAS"
+        "TPPQTQTPQPNPPPVQATPHPFPAVTPDLIVQTPVMTVVPPQPLQTPPPVPPQPQPPPAPAPQPVQSHPPIIAATPQPVKTKKGVKRKADTTTPTTIDPIHE"
+        "PPSLPPEPKTTKLGQRRESSRPVKPPKKDVPDSQQHPAPEKSSKVSEQLKCCSGILKEMFAKKHAAYAWPFYKPVDVEALGLHDYCDIIKHPMDMSTIKSKLE"
+        "AREYRDAQEFGADVRLMFSNCYKYNPPDHEVVAMARKLQDVFEMRFAKMPDEPEEPVVAVSSPAVPPPTKVVAPPSSSDSSSDSSSDSDSSTDDSEEERAQRL"
+        "AELQEQLKAVHEQLAALSQPQQNKPKKKKKKKKKKKK"
+    ),
+    "HSA": (
+        "MKWVTFISLLFLFSSAYSRGVFRRDAHKSEVAHRFKDLGEENFKALVLIAFAQYLQQCPFEDHVKLVNEVTEFAKTCVADESAENCDKSLHTLFGDKLCTVA"
+        "TLRETYGEMADCCAKQEPERNECFLQHKDDNPNLPRLVRPEVDVMCTAFHDNEETFLKKYLYEIARRHPYFYAPELLFFAKRYKAAFTECCQAADKAACLLPK"
+        "LDELRDEGKASSAKQRLKCASLQKFGERAFKAWAVARLSQRFPKAEFAEVSKLVTDLTKVHTECCHGDLLECADDRADLAKYICENQDSISSKLKECCEKPLL"
+        "EKSHCIAEVENDEMPADLPSLAADFVESKDVCKNYAEAKDVFLGMFLYEYARRHPDYSVVLLLRLAKTYETTLEKCCAAADPHECYAKVFDEFKPLVEEPQNL"
+        "IKQNCELFEQLGEYKFQNALLVRYTKKVPQVSTPTLVEVSRNLGKVGSKCCKHPEAKRMPCAEDYLSVVLNQLCVLHEKTPVSDRVTKCCTESLVNRRPCFSA"
+        "LEVDETYVPKEFNAETFTFHADICTLSEKERQIKKQTALVELVKHKPKATKEQLKAVMDDFAAFVEKCCKADDKETCFAEEGKKLVAASQAALGL"
+    ),
+    "sEH": (
+        "MTLRAAVFDLDGVLALPAVFGVLGRTEEALALPRGLLNDAFQKGGPEGATTRLMKGEITLSQWIPLMEENCRKCSETAKVCLPKNFSIKEIFDKAISARKIN"
+        "RPMLQAALMLRKKGFTTAILTNTWLDDRAERDGLAQLMCELKMHFDFLIESCQVGMVKPEPQIYKFLLDTLKASPSEVVFLDDIGANLKPARDLGMVTILVQD"
+        "TDTALKELEKVTGIQLLNTPAPLPTSCNPSDMSHGYVTVKPRVRLHFVELGSGPAVCLCHGFPESWYSWRYQIPALAQAGYRVLAMDMKGYGESSAPPEIEEY"
+        "CMEVLCKEMVTFLDKLGLSQAVFIGHDWGGMLVWYMALFYPERVRAVASLNTPFIPANPNMSPLESIKANPVFDYQLYFQEPGVAEAELEQNLSRTFKSLFRA"
+        "SDESVLSMHKVCEAGGLFVNSPEEPSLSRMVTEEEIQFYVQQFKKSGFRGPLNWYRNMERNWKWACKSLGRKILIPALMVTAEKDFVLVPQMSQHMEDWIPHL"
+        "KRGHIEDCGHWTQMDKPTEVNQILIKWLDSDARNPPVVSKM"
+    ),
+}
+
+
+@torch.no_grad()
+def precompute_protein_embeddings(
+    esm_model: str = "facebook/esm2_t12_35M_UR50D",
+    device: torch.device | str = "cpu",
+    pooling: str = "mean",
+    max_length: int = 1024,
+) -> dict[str, np.ndarray]:
+    """Embed the three targets once and free the ESM model.
+
+    Returns {protein_name: 1-D float32 numpy vector}.
+    """
+    from transformers import AutoModel, AutoTokenizer
+
+    tok = AutoTokenizer.from_pretrained(esm_model)
+    mdl = AutoModel.from_pretrained(esm_model).to(device).eval()
+
+    out: dict[str, np.ndarray] = {}
+    for name, seq in PROTEIN_SEQUENCES.items():
+        enc = tok(seq, return_tensors="pt", truncation=True, max_length=max_length).to(device)
+        hidden = mdl(**enc).last_hidden_state  # (1, L, D)
+        if pooling == "mean":
+            vec = hidden.mean(dim=1)
+        elif pooling == "cls":
+            vec = hidden[:, 0]
+        else:
+            raise ValueError(f"unknown pooling: {pooling}")
+        out[name] = vec.cpu().numpy().astype(np.float32).squeeze()
+
+    del mdl, tok
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return out
